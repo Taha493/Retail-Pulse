@@ -1,0 +1,254 @@
+// ============================================================================
+//  Retail Insights: DAX measures
+//  Model: fact_sales (invoice line) -> dim_date, dim_customer, dim_product,
+//         dim_country.  dim_currency is a DISCONNECTED slicer table.
+//  Prerequisites
+//    * Mark dim_date as a date table (Table tools -> Mark as date table -> date)
+//    * Create the measures in a "_Measures" table (Enter data -> empty table)
+//    * Each measure lists its display folder; the Python twin lives in
+//      src/retail_bi/measures/measures.py under the same name.
+// ============================================================================
+
+
+// ---------------------------------------------------------------------------
+//  Folder: 0 Currency  (field-parameter style switch)
+// ---------------------------------------------------------------------------
+
+Selected Currency =
+SELECTEDVALUE ( dim_currency[currency_code], "GBP" )
+
+Currency Symbol =
+SWITCH ( [Selected Currency], "EUR", "€", "USD", "$", "£" )
+
+// All revenue measures build on this one, so the currency slicer changes every visual.
+Net Revenue =
+SWITCH (
+    [Selected Currency],
+    "EUR", SUM ( fact_sales[revenue_eur] ),
+    "USD", SUM ( fact_sales[revenue_usd] ),
+    SUM ( fact_sales[revenue_gbp] )
+)
+
+
+// ---------------------------------------------------------------------------
+//  Folder: 1 Core
+// ---------------------------------------------------------------------------
+
+// Gross sales: sale lines only (returns excluded)
+Total Revenue =
+CALCULATE ( [Net Revenue], fact_sales[is_return] = FALSE () )
+
+// Value of returned goods, shown as a positive number
+Return Value =
+- CALCULATE ( [Net Revenue], fact_sales[is_return] = TRUE () )
+
+Total Orders =
+CALCULATE ( DISTINCTCOUNT ( fact_sales[invoice_no] ), fact_sales[is_return] = FALSE () )
+
+Units Sold =
+CALCULATE ( SUM ( fact_sales[quantity] ), fact_sales[is_return] = FALSE () )
+
+Avg Order Value =
+DIVIDE ( [Total Revenue], [Total Orders] )
+
+Avg Unit Price =
+DIVIDE ( [Total Revenue], [Units Sold] )
+
+// Guests (customer_key = -1) are excluded from customer analytics
+Active Customers =
+CALCULATE (
+    DISTINCTCOUNT ( fact_sales[customer_key] ),
+    fact_sales[is_return] = FALSE (),
+    fact_sales[customer_key] <> -1
+)
+
+Revenue per Customer =
+DIVIDE (
+    CALCULATE ( [Total Revenue], fact_sales[customer_key] <> -1 ),
+    [Active Customers]
+)
+
+
+// ---------------------------------------------------------------------------
+//  Folder: 2 Returns
+// ---------------------------------------------------------------------------
+
+Return Rate % =
+DIVIDE ( [Return Value], [Total Revenue] )
+
+Return Lines =
+CALCULATE ( COUNTROWS ( fact_sales ), fact_sales[is_return] = TRUE () )
+
+
+// ---------------------------------------------------------------------------
+//  Folder: 3 Time intelligence   (requires the marked date table)
+// ---------------------------------------------------------------------------
+
+Net Revenue PY =
+CALCULATE ( [Net Revenue], SAMEPERIODLASTYEAR ( dim_date[date] ) )
+
+Net Revenue YoY =
+[Net Revenue] - [Net Revenue PY]
+
+Net Revenue YoY % =
+DIVIDE ( [Net Revenue YoY], [Net Revenue PY] )
+
+Total Orders PY =
+CALCULATE ( [Total Orders], SAMEPERIODLASTYEAR ( dim_date[date] ) )
+
+Total Orders YoY % =
+DIVIDE ( [Total Orders] - [Total Orders PY], [Total Orders PY] )
+
+Net Revenue MTD =
+TOTALMTD ( [Net Revenue], dim_date[date] )
+
+Net Revenue QTD =
+TOTALQTD ( [Net Revenue], dim_date[date] )
+
+Net Revenue YTD =
+TOTALYTD ( [Net Revenue], dim_date[date] )
+
+Net Revenue PM =
+CALCULATE ( [Net Revenue], DATEADD ( dim_date[date], -1, MONTH ) )
+
+Net Revenue MoM % =
+DIVIDE ( [Net Revenue] - [Net Revenue PM], [Net Revenue PM] )
+
+// Average monthly revenue over the 3 months ending at the current month
+Rolling 3M Avg =
+VAR _months =
+    DATESINPERIOD ( dim_date[date], MAX ( dim_date[date] ), -3, MONTH )
+RETURN
+    DIVIDE ( CALCULATE ( [Net Revenue], _months ), 3 )
+
+
+// ---------------------------------------------------------------------------
+//  Folder: 4 Customers
+// ---------------------------------------------------------------------------
+
+// Customers whose first purchase falls inside the selected period
+New Customers =
+VAR _start = MIN ( dim_date[date] )
+VAR _end = MAX ( dim_date[date] )
+RETURN
+    CALCULATE (
+        [Active Customers],
+        KEEPFILTERS (
+            dim_customer[first_purchase_date] >= _start
+                && dim_customer[first_purchase_date] <= _end
+        )
+    )
+
+Returning Customers =
+[Active Customers] - [New Customers]
+
+// Share of active customers with 2+ orders in the period
+Repeat Purchase Rate =
+VAR _customers =
+    CALCULATETABLE (
+        VALUES ( fact_sales[customer_key] ),
+        fact_sales[is_return] = FALSE (),
+        fact_sales[customer_key] <> -1
+    )
+VAR _repeaters =
+    FILTER ( _customers, CALCULATE ( [Total Orders] ) > 1 )
+RETURN
+    DIVIDE ( COUNTROWS ( _repeaters ), COUNTROWS ( _customers ) )
+
+Customer Lifetime Value =
+AVERAGEX (
+    FILTER ( dim_customer, dim_customer[customer_key] <> -1 ),
+    dim_customer[lifetime_revenue_gbp]
+)
+
+// Use in a matrix: rows = dim_customer[cohort_month], columns = 'Cohort Offset'[Value]
+// Calculated table:  Cohort Offset = GENERATESERIES ( 0, 12, 1 )
+Cohort Retention % =
+VAR _offset = SELECTEDVALUE ( 'Cohort Offset'[Value] )
+VAR _cohort = SELECTEDVALUE ( dim_customer[cohort_month] )
+VAR _cohortSize =
+    CALCULATE ( COUNTROWS ( dim_customer ), REMOVEFILTERS ( dim_date ) )
+VAR _monthStart = EDATE ( _cohort, _offset )
+VAR _active =
+    CALCULATE (
+        [Active Customers],
+        DATESBETWEEN ( dim_date[date], _monthStart, EOMONTH ( _monthStart, 0 ) )
+    )
+RETURN
+    IF ( NOT ISBLANK ( _cohort ), DIVIDE ( _active, _cohortSize ) )
+
+
+// ---------------------------------------------------------------------------
+//  Folder: 5 Products
+// ---------------------------------------------------------------------------
+
+Revenue Rank =
+IF (
+    HASONEVALUE ( dim_product[product_name] ),
+    RANKX ( ALLSELECTED ( dim_product[product_name] ), [Net Revenue], , DESC, DENSE )
+)
+
+Product Share % =
+DIVIDE ( [Net Revenue], CALCULATE ( [Net Revenue], ALLSELECTED ( dim_product ) ) )
+
+// Pareto curve: running share of revenue down the product ranking
+Cumulative Revenue % =
+VAR _current = [Net Revenue]
+VAR _total = CALCULATE ( [Net Revenue], ALLSELECTED ( dim_product ) )
+VAR _running =
+    SUMX (
+        FILTER (
+            ALLSELECTED ( dim_product[product_name] ),
+            CALCULATE ( [Net Revenue] ) >= _current
+        ),
+        CALCULATE ( [Net Revenue] )
+    )
+RETURN
+    DIVIDE ( _running, _total )
+
+// ABC class that responds to filters (the static one is dim_product[abc_class])
+ABC Class (Dynamic) =
+VAR _cum = [Cumulative Revenue %]
+RETURN
+    SWITCH ( TRUE (), ISBLANK ( _cum ), BLANK (), _cum <= 0.80, "A", _cum <= 0.95, "B", "C" )
+
+
+// ---------------------------------------------------------------------------
+//  Folder: 6 Geography
+// ---------------------------------------------------------------------------
+
+Revenue per 1M Population =
+DIVIDE ( [Net Revenue], SUM ( dim_country[population] ) ) * 1000000
+
+International Share % =
+DIVIDE (
+    CALCULATE ( [Net Revenue], dim_country[market] = "International" ),
+    CALCULATE ( [Net Revenue], REMOVEFILTERS ( dim_country[market] ) )
+)
+
+
+// ---------------------------------------------------------------------------
+//  Folder: 7 Report UX  (dynamic titles, KPI labels, conditional formatting)
+// ---------------------------------------------------------------------------
+
+Title Revenue Trend =
+"Net revenue by month (" & [Selected Currency] & ") · "
+    & FORMAT ( MIN ( dim_date[date] ), "d mmm yyyy" ) & " – "
+    & FORMAT ( MAX ( dim_date[date] ), "d mmm yyyy" )
+
+KPI Delta Label =
+VAR _d = [Net Revenue YoY %]
+RETURN
+    IF ( ISBLANK ( _d ), BLANK (), IF ( _d >= 0, "▲ ", "▼ " ) & FORMAT ( _d, "+0.0%;-0.0%" ) & " vs PY" )
+
+// Field value for conditional font colour on the card
+KPI Delta Color =
+IF ( [Net Revenue YoY %] >= 0, "#107C10", "#C4314B" )
+
+// Shows which slicers are active (place in a card at the top of the page)
+Active Filters Text =
+VAR _cat = IF ( ISFILTERED ( dim_product[category] ), "Category: " & CONCATENATEX ( VALUES ( dim_product[category] ), dim_product[category], ", " ) )
+VAR _reg = IF ( ISFILTERED ( dim_country[region] ), "Region: " & CONCATENATEX ( VALUES ( dim_country[region] ), dim_country[region], ", " ) )
+VAR _txt = _cat & IF ( _cat <> "" && _reg <> "", " · " ) & _reg
+RETURN
+    IF ( _txt = "", "No filters", _txt )
