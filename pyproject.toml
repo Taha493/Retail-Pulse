@@ -1,0 +1,55 @@
+[project]
+name = "retail-bi"
+version = "0.1.0"
+description = "Online Retail II -> Power BI-ready star schema, DAX measures and a Power BI-style web report"
+authors = [
+    { name = "Taha Mahmood", email = "taha.tsf901@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "dash>=4.4.1",
+    "duckdb>=2.0.0",
+    "fastexcel>=0.21.0",
+    "gunicorn>=26.2.0",
+    "holidays>=0.107",
+    "httpx>=0.28.1",
+    "openpyxl>=3.1.5",
+    "pandera[polars]>=0.35.0",
+    "plotly>=7.1.0",
+    "polars>=2.0.0",
+    "pyarrow>=26.0.0",
+    "pyyaml>=6.0.3",
+    "tenacity>=9.2.1",
+]
+
+[project.scripts]
+retail-bi = "retail_bi.pipeline:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "playwright>=1.64.1",
+    "pytest>=9.1.1",
+    "ruff>=0.17.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["e2e: browser end-to-end tests (need Playwright Chromium)"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["src", "dashboard"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E731"]
+
+[tool.ruff.lint.per-file-ignores]
+# HTML/CSS template strings
+"src/retail_bi/validate/dq_report.py" = ["E501"]
+"scripts/render_diagrams.py" = ["E501"]

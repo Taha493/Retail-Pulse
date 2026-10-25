@@ -1,0 +1,81 @@
+# Central configuration for the Retail BI pipeline.
+# Every URL, date range and business rule lives here, not in code.
+
+paths:
+  raw: data/raw
+  bronze: data/bronze
+  silver: data/silver
+  gold: data/gold
+  warehouse: warehouse/retail.duckdb
+  docs: docs
+
+period:
+  start: "2009-12-01"
+  end: "2011-12-31"
+
+sources:
+  retail:
+    url: https://archive.ics.uci.edu/static/public/502/online+retail+ii.zip
+    file: online_retail_II.xlsx
+  fx:
+    url: https://api.frankfurter.dev/v1/{start}..{end}
+    base: GBP
+    symbols: [EUR, USD]
+    file: fx_rates.json
+  worldbank:
+    url: https://api.worldbank.org/v2/country/all/indicator/{indicator}
+    indicators:
+      population: SP.POP.TOTL
+      gdp_per_capita: NY.GDP.PCAP.CD
+    year: 2010
+    file: worldbank.json
+  countries:
+    url: https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/master/all/all.csv
+    file: countries.csv
+
+http:
+  timeout_seconds: 120
+  retries: 4
+
+rules:
+  # Stock codes that are not physical products -> line_type
+  # (matched after upper-casing; DCGS* and SP* codes are real products)
+  non_product_codes:
+    postage: [POST, DOT, C2, C3]
+    fee: [AMAZONFEE, BANK CHARGES, CRUK]
+    adjustment: [M, D, S, B, PADS, ADJUST, ADJUST2, GIFT]
+    test: [TEST001, TEST002]
+  non_product_prefixes:
+    adjustment: [ADJUST, GIFT_]
+    test: [TEST]
+  # Raw country label -> ISO 3166 alpha-3 (labels whose name differs from ISO)
+  country_overrides:
+    EIRE: IRL
+    RSA: ZAF
+    USA: USA
+    United Kingdom: GBR
+    Netherlands: NLD
+    Korea: KOR
+    Czech Republic: CZE
+    Channel Islands: CHI
+    European Community: EUR
+    West Indies: WIN
+    Unspecified: UNK
+  # Friendlier report labels for a few raw country names
+  country_display_names:
+    EIRE: Ireland
+    RSA: South Africa
+    USA: United States
+    Korea: South Korea
+    Unspecified: Unknown
+  # Labels that are not ISO countries get a hand-written dim row
+  # (CHI is not ISO but the World Bank publishes data for it)
+  pseudo_countries:
+    CHI: {name: Channel Islands, region: Europe, sub_region: Northern Europe}
+    EUR: {name: European Community, region: Europe, sub_region: Western Europe}
+    WIN: {name: West Indies, region: Americas, sub_region: Latin America and the Caribbean}
+    UNK: {name: Unknown, region: Unknown, sub_region: Unknown}
+  outlier_quantity_threshold: 10000
+  rfm_reference_offset_days: 1
+  abc_thresholds: {A: 0.80, B: 0.95}
+  fiscal_year_start_month: 4

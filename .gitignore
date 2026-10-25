@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.venv
+.pytest_cache/
+.ruff_cache/
+
+# Data: raw downloads and intermediate layers are rebuilt by `make all`
+data/raw/*
+!data/raw/_manifest.json
+data/bronze/
+data/silver/
+# Gold parquet is committed so Power BI users can load it without Python;
+# CSV copies are regenerated (fact_sales.csv is ~100 MB)
+data/gold/*.csv
+warehouse/*.duckdb
+warehouse/*.building
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
