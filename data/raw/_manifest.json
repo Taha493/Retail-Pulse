@@ -1,0 +1,34 @@
+{
+  "countries": {
+    "source_url": "https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/master/all/all.csv",
+    "file": "countries.csv",
+    "downloaded_at": "2026-10-25T15:08:07+00:00",
+    "bytes": 20730,
+    "sha256": "347bba35029f804f53780062052499781d267b8a5d887bf3b051e80a68390d6d",
+    "rows": 249
+  },
+  "fx": {
+    "source_url": "https://api.frankfurter.dev/v1/2009-12-01..2011-12-31",
+    "file": "fx_rates.json",
+    "downloaded_at": "2026-10-25T15:08:08+00:00",
+    "bytes": 24675,
+    "sha256": "b542dbee2ce84b64161c2a7d37f9e8468743c0a917cdc0dff00bebd0da057734",
+    "rows": 537
+  },
+  "worldbank": {
+    "source_url": "https://api.worldbank.org/v2/country/all/indicator/{indicator}",
+    "file": "worldbank.json",
+    "downloaded_at": "2026-10-25T15:08:12+00:00",
+    "bytes": 124627,
+    "sha256": "5f3477d7032022a9e739ff60213e8b249891efd266bbb170a1366cf40a8b9277",
+    "rows": 532
+  },
+  "retail": {
+    "source_url": "https://archive.ics.uci.edu/static/public/502/online+retail+ii.zip",
+    "file": "online_retail_II.xlsx",
+    "downloaded_at": "2026-10-25T15:09:46+00:00",
+    "bytes": 45622278,
+    "sha256": "bcbe73b35f5b7babf197fb0cb983a11f5d9ff929078d4aa53d171b1f2df2e980",
+    "rows": null
+  }
+}
