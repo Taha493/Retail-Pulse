@@ -1,0 +1,8 @@
+.venv
+.git
+data
+warehouse
+docs
+tests
+scripts
+**/__pycache__
